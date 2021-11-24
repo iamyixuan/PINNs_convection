@@ -4,6 +4,7 @@ from torch.nn import functional as F
 from collections import OrderedDict
 import numpy as np
 from choose_optimizer import *
+from data import *
 
 # CUDA support
 if torch.cuda.is_available():
@@ -60,8 +61,9 @@ class DNN(torch.nn.Module):
 class PhysicsInformedNN_pbc():
     """PINNs (convection/diffusion/reaction) for periodic boundary conditions."""
     def __init__(self, system, X_u_train, u_train, X_f_train, bc_lb, bc_ub, layers, G, nu, beta, rho, optimizer_name, lr,
-        net, L=1, activation='tanh', loss_style='mean'):
+        net, args, L=1, activation='tanh', loss_style='mean'):
 
+        self.args = args
         self.system = system
 
         self.x_u = torch.tensor(X_u_train[:, 0:1], requires_grad=True).float().to(device)
@@ -84,6 +86,7 @@ class PhysicsInformedNN_pbc():
         self.layers = layers
         self.nu = nu
         self.beta = beta
+        self.beta_final = beta
         self.rho = rho
 
         self.G = torch.tensor(G, requires_grad=True).float().to(device)
@@ -99,6 +102,23 @@ class PhysicsInformedNN_pbc():
         self.loss_style = loss_style
 
         self.iter = 0
+
+    def curriculum_(self, beta, args):
+        X_u_train, u_train, X_f_train, bc_lb, bc_ub, G, nu, beta , X_star, u_star = load_data(beta, args)
+        
+        self.beta = beta
+        self.x_u = torch.tensor(X_u_train[:, 0:1], requires_grad=True).float().to(device)
+        self.t_u = torch.tensor(X_u_train[:, 1:2], requires_grad=True).float().to(device)
+        self.x_f = torch.tensor(X_f_train[:, 0:1], requires_grad=True).float().to(device)
+        self.t_f = torch.tensor(X_f_train[:, 1:2], requires_grad=True).float().to(device)
+        self.x_bc_lb = torch.tensor(bc_lb[:, 0:1], requires_grad=True).float().to(device)
+        self.t_bc_lb = torch.tensor(bc_lb[:, 1:2], requires_grad=True).float().to(device)
+        self.x_bc_ub = torch.tensor(bc_ub[:, 0:1], requires_grad=True).float().to(device)
+        self.t_bc_ub = torch.tensor(bc_ub[:, 1:2], requires_grad=True).float().to(device) 
+        self.u = torch.tensor(u_train, requires_grad=True).float().to(device)
+        self.nu = nu
+        self.G = torch.tensor(G, requires_grad=True).float().to(device)
+        return X_star, u_star
 
     def net_u(self, x, t):
         """The standard DNN that takes (x,t) --> u."""
@@ -158,8 +178,6 @@ class PhysicsInformedNN_pbc():
 
     def loss_pinn(self, verbose=True):
         """ Loss function. """
-        if torch.is_grad_enabled():
-            self.optimizer.zero_grad()
         u_pred = self.net_u(self.x_u, self.t_u)
         u_pred_lb = self.net_u(self.x_bc_lb, self.t_bc_lb)
         u_pred_ub = self.net_u(self.x_bc_ub, self.t_bc_ub)
@@ -181,34 +199,43 @@ class PhysicsInformedNN_pbc():
             loss_f = torch.sum(f_pred ** 2)
 
         loss = loss_u + loss_b + self.L*loss_f
-
-        if loss.requires_grad:
-            loss.backward()
-
-        grad_norm = 0
-        for p in self.dnn.parameters():
-            param_norm = p.grad.detach().data.norm(2)
-            grad_norm += param_norm.item() ** 2
-        grad_norm = grad_norm ** 0.5
-
         if verbose:
-            if self.iter % 100 == 0:
+            if self.iter % 1000 == 0:
                 print(
-                    'epoch %d, gradient: %.5e, loss: %.5e, loss_u: %.5e, loss_b: %.5e, loss_f: %.5e' % (self.iter, grad_norm, loss.item(), loss_u.item(), loss_b.item(), loss_f.item())
+                    'epoch %d, loss: %.5e, loss_u: %.5e, loss_b: %.5e, loss_f: %.5e' % (self.iter, loss.item(), loss_u.item(), loss_b.item(), loss_f.item())
                 )
+                print("Current beta is %.3f/%d" % (self.beta, self.beta_final))
             self.iter += 1
 
         return loss
 
-    def train(self):
+    def train(self, epochs, if_curriculum=False):
         self.dnn.train()
-        self.optimizer.step(self.loss_pinn)
+        beta = 0.01 
+        for epoch in range(epochs):
+            if if_curriculum:
+                if epoch % 100 == 0 and beta <= self.beta_final:
+                    X_star, u_star = self.curriculum_(beta, self.args)
+                    beta *= 1.05
+                else:
+                    X_star, u_star = self.curriculum_(self.beta_final, self.args)
+                    
+            else:
+                 pass
+            def closure():
+                self.optimizer.zero_grad()
+                loss = self.loss_pinn()
+                loss.backward()
+                return loss
+            self.optimizer.step(closure)
+        return X_star, u_star
 
     def predict(self, X):
         x = torch.tensor(X[:, 0:1], requires_grad=True).float().to(device)
         t = torch.tensor(X[:, 1:2], requires_grad=True).float().to(device)
 
         self.dnn.eval()
+        
         u = self.net_u(x, t)
         u = u.detach().cpu().numpy()
 

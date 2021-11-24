@@ -33,7 +33,7 @@ def exact_u(Exact, x, t, nu, beta, rho, layers, N_f, L, source, u0_str, system, 
 
     ax.tick_params(labelsize=15)
 
-    plt.savefig(f"{path}/exactu_{system}_nu{nu}_beta{beta}_rho{rho}_Nf{N_f}_{layers}_L{L}_source{source}_{u0_str}.pdf")
+    plt.savefig(f"{path}/exactu_{system}_nu{nu}_beta{beta}_rho{rho}_Nf{N_f}_{layers}_L{L}_source{source}_{u0_str}.pdf", bbox_inches='tight')
     plt.close()
 
     return None
@@ -72,7 +72,7 @@ def u_diff(Exact, U_pred, x, t, nu, beta, rho, seed, layers, N_f, L, source, lr,
 
     ax.tick_params(labelsize=15)
 
-    plt.savefig(f"{path}/udiff_{system}_nu{nu}_beta{beta}_rho{rho}_Nf{N_f}_{layers}_L{L}_seed{seed}_source{source}_{u0_str}_lr{lr}.pdf")
+    plt.savefig(f"{path}/udiff_{system}_nu{nu}_beta{beta}_rho{rho}_Nf{N_f}_{layers}_L{L}_seed{seed}_source{source}_{u0_str}_lr{lr}.pdf", bbox_inches='tight')
 
     return None
 
@@ -106,7 +106,7 @@ def u_predict(u_vals, U_pred, x, t, nu, beta, rho, seed, layers, N_f, L, source,
 
     ax.tick_params(labelsize=15)
 
-    plt.savefig(f"{path}/upredicted_{system}_nu{nu}_beta{beta}_rho{rho}_Nf{N_f}_{layers}_L{L}_seed{seed}_source{source}_{u0_str}_lr{lr}.pdf")
+    plt.savefig(f"{path}/upredicted_{system}_nu{nu}_beta{beta}_rho{rho}_Nf{N_f}_{layers}_L{L}_seed{seed}_source{source}_{u0_str}_lr{lr}.pdf", bbox_inches="tight")
 
     plt.close()
     return None

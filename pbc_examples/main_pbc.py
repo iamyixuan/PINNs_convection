@@ -20,15 +20,15 @@ parser = argparse.ArgumentParser(description='Characterizing/Rethinking PINNs')
 parser.add_argument('--system', type=str, default='convection', help='System to study.')
 parser.add_argument('--seed', type=int, default=0, help='Random initialization.')
 parser.add_argument('--N_f', type=int, default=100, help='Number of collocation points to sample.')
-parser.add_argument('--optimizer_name', type=str, default='LBFGS', help='Optimizer of choice.')
-parser.add_argument('--lr', type=float, default=1.0, help='Learning rate.')
-parser.add_argument('--L', type=float, default=1.0, help='Multiplier on loss f.')
+parser.add_argument('--optimizer_name', type=str, default='Adam', help='Optimizer of choice.')
+parser.add_argument('--lr', type=float, default=5e-5, help='Learning rate.')
+parser.add_argument('--L', type=float, default=2.0, help='Multiplier on loss f.')
 
 parser.add_argument('--xgrid', type=int, default=256, help='Number of points in the xgrid.')
 parser.add_argument('--nt', type=int, default=100, help='Number of points in the tgrid.')
 parser.add_argument('--nu', type=float, default=1.0, help='nu value that scales the d^2u/dx^2 term. 0 if only doing advection.')
 parser.add_argument('--rho', type=float, default=1.0, help='reaction coefficient for u*(1-u) term.')
-parser.add_argument('--beta', type=float, default=1.0, help='beta value that scales the du/dx term. 0 if only doing diffusion.')
+parser.add_argument('--beta', type=float, default=30.0, help='beta value that scales the du/dx term. 0 if only doing diffusion.')
 parser.add_argument('--u0_str', default='sin(x)', help='str argument for initial condition if no forcing term.')
 parser.add_argument('--source', default=0, type=float, help="If there's a source term, define it here. For now, just constant force terms.")
 
@@ -117,6 +117,7 @@ bc_ub = np.hstack((x_bc_ub, t))
 u_train = uu1 # just the initial condition
 X_u_train = xx1 # (x,t) for initial condition
 
+
 layers.insert(0, X_u_train.shape[-1])
 
 ############################
@@ -126,10 +127,10 @@ layers.insert(0, X_u_train.shape[-1])
 set_seed(args.seed) # for weight initialization
 
 model = PhysicsInformedNN_pbc(args.system, X_u_train, u_train, X_f_train, bc_lb, bc_ub, layers, G, nu, beta, rho,
-                            args.optimizer_name, args.lr, args.net, args.L, args.activation, args.loss_style)
-model.train()
-
-u_pred = model.predict(X_star)
+                            args.optimizer_name, args.lr, args.net, args, args.L, args.activation, args.loss_style)
+X_Star, u_star = model.train(30000)
+print(model.iter, "Iteration number ")
+u_pred = model.predict(X_Star)
 
 error_u_relative = np.linalg.norm(u_star-u_pred, 2)/np.linalg.norm(u_star, 2)
 error_u_abs = np.mean(np.abs(u_star - u_pred))
@@ -146,7 +147,7 @@ if args.visualize:
     u_pred = u_pred.reshape(len(t), len(x))
     exact_u(Exact, x, t, nu, beta, rho, orig_layers, args.N_f, args.L, args.source, args.u0_str, args.system, path=path)
     u_diff(Exact, u_pred, x, t, nu, beta, rho, args.seed, orig_layers, args.N_f, args.L, args.source, args.lr, args.u0_str, args.system, path=path)
-    u_predict(u_vals, u_pred, x, t, nu, beta, rho, args.seed, orig_layers, args.N_f, args.L, args.source, args.lr, args.u0_str, args.system, path=path)
+    u_predict(u_star.reshape(-1, ), u_pred, x, t, nu, beta, rho, args.seed, orig_layers, args.N_f, args.L, args.source, args.lr, args.u0_str, args.system, path=path)
 
 if args.save_model: # whether or not to save the model
     path = "saved_models"

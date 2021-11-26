@@ -1,4 +1,5 @@
 import torch
+import pickle
 import torch.nn as nn
 from torch.nn import functional as F
 from collections import OrderedDict
@@ -212,6 +213,7 @@ class PhysicsInformedNN_pbc():
     def train(self, epochs, if_curriculum=False):
         self.dnn.train()
         beta = 0.01 
+        train_loss = []
         for epoch in range(epochs):
             if if_curriculum:
                 if epoch % 100 == 0 and beta <= self.beta_final:
@@ -227,8 +229,10 @@ class PhysicsInformedNN_pbc():
                 loss = self.loss_pinn()
                 loss.backward()
                 return loss
+            train_loss.append(self.loss_pinn().detach().numpy())
             self.optimizer.step(closure)
-        return X_star, u_star
+        pickle.dump(train_loss, open("../history/train_loss.pkl", "wb"))
+        return 
 
     def predict(self, X):
         x = torch.tensor(X[:, 0:1], requires_grad=True).float().to(device)
@@ -238,5 +242,6 @@ class PhysicsInformedNN_pbc():
         
         u = self.net_u(x, t)
         u = u.detach().cpu().numpy()
+
 
         return u

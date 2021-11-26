@@ -12,6 +12,8 @@ from utils import *
 from visualize import *
 import matplotlib.pyplot as plt
 
+import pickle
+
 ################
 # Arguments
 ################
@@ -38,7 +40,7 @@ parser.add_argument('--activation', default='tanh', help='Activation to use in t
 parser.add_argument('--loss_style', default='mean', help='Loss for the network (MSE, vs. summing).')
 
 parser.add_argument('--visualize', default=False, help='Visualize the solution.')
-parser.add_argument('--save_model', default=False, help='Save the model for analysis later.')
+parser.add_argument('--save_model', default=True, help='Save the model for analysis later.')
 
 args = parser.parse_args()
 
@@ -120,6 +122,10 @@ X_u_train = xx1 # (x,t) for initial condition
 
 layers.insert(0, X_u_train.shape[-1])
 
+
+train_data = {"X_u_train": X_u_train, "X_f_train": X_f_train, "u_train": u_train, "nu":nu, "beta": beta, "rho": rho, "L": args.L, "bc_lb":bc_lb, "bc_ub": bc_ub, "G": G}
+pickle.dump(train_data, open("../history/train_data.pkl", "wb"))
+
 ############################
 # Train the model
 ############################
@@ -128,9 +134,9 @@ set_seed(args.seed) # for weight initialization
 
 model = PhysicsInformedNN_pbc(args.system, X_u_train, u_train, X_f_train, bc_lb, bc_ub, layers, G, nu, beta, rho,
                             args.optimizer_name, args.lr, args.net, args, args.L, args.activation, args.loss_style)
-X_Star, u_star = model.train(30000)
+model.train(3000)
 print(model.iter, "Iteration number ")
-u_pred = model.predict(X_Star)
+u_pred = model.predict(X_star)
 
 error_u_relative = np.linalg.norm(u_star-u_pred, 2)/np.linalg.norm(u_star, 2)
 error_u_abs = np.mean(np.abs(u_star - u_pred))

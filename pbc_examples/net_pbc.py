@@ -4,6 +4,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from collections import OrderedDict
 import numpy as np
+from torch.nn import init
 from choose_optimizer import *
 from data import *
 
@@ -15,7 +16,7 @@ else:
 
 # the deep neural network
 class DNN(torch.nn.Module):
-    def __init__(self, layers, activation, use_batch_norm=False, use_instance_norm=False):
+    def __init__(self, layers, activation, use_batch_norm=False, use_instance_norm=False, init='normal'):
         super(DNN, self).__init__()
 
         # parameters
@@ -54,15 +55,28 @@ class DNN(torch.nn.Module):
 
         # deploy layers
         self.layers = torch.nn.Sequential(layerDict)
+        if init == "normal":
+            self.layers.apply(self._init_weights_norm)
+        else:
+            self.layers.apply(self._init_weights_uni)
 
     def forward(self, x):
         out = self.layers(x)
         return out
 
+    def _init_weights_norm(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_normal_(m.weight)
+            m.bias.data.zero_()
+    def _init_weights_uni(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            m.bias.data.zero_()
+
 class PhysicsInformedNN_pbc():
     """PINNs (convection/diffusion/reaction) for periodic boundary conditions."""
     def __init__(self, system, X_u_train, u_train, X_f_train, bc_lb, bc_ub, layers, G, nu, beta, rho, optimizer_name, lr,
-        net, args, L=1, activation='tanh', loss_style='mean'):
+        net, args, L=1, activation='tanh', loss_style='mean', init="normal", wd=0):
 
         self.args = args
         self.system = system
@@ -78,7 +92,7 @@ class PhysicsInformedNN_pbc():
         self.net = net
 
         if self.net == 'DNN':
-            self.dnn = DNN(layers, activation).to(device)
+            self.dnn = DNN(layers, activation, init=init).to(device)
         else: # "pretrained" can be included in model path
             # the dnn is within the PINNs class
             self.dnn = torch.load(net).dnn
@@ -98,7 +112,7 @@ class PhysicsInformedNN_pbc():
         self.lr = lr
         self.optimizer_name = optimizer_name
 
-        self.optimizer = choose_optimizer(self.optimizer_name, self.dnn.parameters(), self.lr)
+        self.optimizer = choose_optimizer(self.optimizer_name, self.dnn.parameters(), self.lr, (0.9, 0.999), 1e-08, wd)
 
         self.loss_style = loss_style
 

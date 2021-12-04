@@ -38,6 +38,8 @@ parser.add_argument('--layers', type=str, default='50,50,50,50,1', help='Dimensi
 parser.add_argument('--net', type=str, default='DNN', help='The net architecture that is to be used.')
 parser.add_argument('--activation', default='tanh', help='Activation to use in the network.')
 parser.add_argument('--loss_style', default='mean', help='Loss for the network (MSE, vs. summing).')
+parser.add_argument('--init', default='normal', help='weigths initialization', type=str)
+parser.add_argument('--weight_decay', default=0, type=float)
 
 parser.add_argument('--visualize', default=False, help='Visualize the solution.')
 parser.add_argument('--save_model', default=True, help='Save the model for analysis later.')
@@ -133,7 +135,8 @@ pickle.dump(train_data, open("../history/train_data.pkl", "wb"))
 set_seed(args.seed) # for weight initialization
 
 model = PhysicsInformedNN_pbc(args.system, X_u_train, u_train, X_f_train, bc_lb, bc_ub, layers, G, nu, beta, rho,
-                            args.optimizer_name, args.lr, args.net, args, args.L, args.activation, args.loss_style)
+                            args.optimizer_name, args.lr, args.net, args, args.L, args.activation, args.loss_style, args.init,
+                            args.weight_decay)
 model.train(3000)
 print(model.iter, "Iteration number ")
 u_pred = model.predict(X_star)
@@ -160,4 +163,4 @@ if args.save_model: # whether or not to save the model
     if not os.path.exists(path):
         os.makedirs(path)
     if 'pretrained' not in args.net: # only save new models
-        torch.save(model, f"saved_models/pretrained_{args.system}_u0{args.u0_str}_nu{nu}_beta{beta}_rho{rho}_Nf{args.N_f}_{args.layers}_L{args.L}_source{args.source}_seed{args.seed}.pt")
+        torch.save(model, f"saved_models/{args.system}_beta-{beta}_layers-{args.layers}_L-{args.L}_WD-{args.weight_decay}_init-{args.init}_seed{args.seed}.pt")

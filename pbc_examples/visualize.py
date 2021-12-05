@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.gridspec as gridspec
 
+
 def exact_u(Exact, x, t, nu, beta, rho, layers, N_f, L, source, u0_str, system, path):
     """Visualize exact solution."""
     fig = plt.figure(figsize=(9, 5))

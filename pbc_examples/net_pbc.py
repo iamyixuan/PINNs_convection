@@ -8,6 +8,8 @@ from torch.nn import init
 from choose_optimizer import *
 from data import *
 
+from tqdm import tqdm
+
 # CUDA support
 if torch.cuda.is_available():
     device = torch.device('cuda')
@@ -191,9 +193,9 @@ class PhysicsInformedNN_pbc():
 
         return u_lb_x, u_ub_x
 
-    def loss_pinn(self, verbose=True):
+    def loss_pinn(self, x_u, t_u, u, verbose=False):
         """ Loss function. """
-        u_pred = self.net_u(self.x_u, self.t_u)
+        u_pred = self.net_u(x_u, t_u)
         u_pred_lb = self.net_u(self.x_bc_lb, self.t_bc_lb)
         u_pred_ub = self.net_u(self.x_bc_ub, self.t_bc_ub)
         if self.nu != 0:
@@ -201,7 +203,7 @@ class PhysicsInformedNN_pbc():
         f_pred = self.net_f(self.x_f, self.t_f)
 
         if self.loss_style == 'mean':
-            loss_u = torch.mean((self.u - u_pred) ** 2)
+            loss_u = torch.mean((u - u_pred) ** 2)
             loss_b = torch.mean((u_pred_lb - u_pred_ub) ** 2)
             if self.nu != 0:
                 loss_b += torch.mean((u_pred_lb_x - u_pred_ub_x) ** 2)
@@ -222,13 +224,14 @@ class PhysicsInformedNN_pbc():
                 print("Current beta is %.3f/%d" % (self.beta, self.beta_final))
             self.iter += 1
 
-        return loss
+        return loss, loss_u, loss_b, loss_f
 
-    def train(self, epochs, if_curriculum=False):
+    def train(self, epochs, batch_size, if_curriculum=False):
         self.dnn.train()
         beta = 0.01 
-        train_loss = []
-        for epoch in range(epochs):
+        train_loss = {"total": [], "u": [], "b": [], "f": []}
+        num_itr = self.x_u.shape[0] // batch_size
+        for epoch in tqdm(range(epochs)):
             if if_curriculum:
                 if epoch % 100 == 0 and beta <= self.beta_final:
                     X_star, u_star = self.curriculum_(beta, self.args)
@@ -238,15 +241,33 @@ class PhysicsInformedNN_pbc():
                     
             else:
                  pass
-            def closure():
-                self.optimizer.zero_grad()
-                loss = self.loss_pinn()
-                loss.backward()
-                return loss
-            train_loss.append(self.loss_pinn().detach().numpy())
-            self.optimizer.step(closure)
-        pickle.dump(train_loss, open("../history/train_loss.pkl", "wb"))
-        return 
+            running_loss = 0
+            running_loss_u = 0
+            running_loss_b = 0
+            running_loss_f = 0
+            for i in range(num_itr):
+                x_u_batch = self.x_u[i * batch_size : (i + 1) * batch_size]    
+                t_u_batch = self.t_u[i * batch_size : (i + 1) * batch_size]
+                u_batch = self.u[i * batch_size : (i + 1) * batch_size]
+
+                def closure():
+                    self.optimizer.zero_grad()
+                    loss, ls_u, ls_b, ls_f = self.loss_pinn(x_u_batch, t_u_batch, u_batch)
+                    loss.backward()
+                    return loss
+                self.optimizer.step(closure)
+                _loss, loss_u, loss_b, loss_f = self.loss_pinn(x_u_batch, t_u_batch, u_batch)
+                running_loss += _loss.detach().numpy()
+                running_loss_u += loss_u.detach().numpy()
+                running_loss_b += loss_b.detach().numpy()
+                running_loss_f += loss_f.detach().numpy()
+
+            train_loss["total"].append(running_loss/num_itr)
+            train_loss["u"].append(running_loss_u/num_itr)
+            train_loss["b"].append(running_loss_b/num_itr)
+            train_loss["f"].append(running_loss_f/num_itr)
+
+        return train_loss
 
     def predict(self, X):
         x = torch.tensor(X[:, 0:1], requires_grad=True).float().to(device)

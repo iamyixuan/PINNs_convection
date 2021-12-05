@@ -30,7 +30,7 @@ parser.add_argument('--xgrid', type=int, default=256, help='Number of points in 
 parser.add_argument('--nt', type=int, default=100, help='Number of points in the tgrid.')
 parser.add_argument('--nu', type=float, default=1.0, help='nu value that scales the d^2u/dx^2 term. 0 if only doing advection.')
 parser.add_argument('--rho', type=float, default=1.0, help='reaction coefficient for u*(1-u) term.')
-parser.add_argument('--beta', type=float, default=30.0, help='beta value that scales the du/dx term. 0 if only doing diffusion.')
+parser.add_argument('--beta', type=float, default=1.0, help='beta value that scales the du/dx term. 0 if only doing diffusion.')
 parser.add_argument('--u0_str', default='sin(x)', help='str argument for initial condition if no forcing term.')
 parser.add_argument('--source', default=0, type=float, help="If there's a source term, define it here. For now, just constant force terms.")
 
@@ -40,8 +40,9 @@ parser.add_argument('--activation', default='tanh', help='Activation to use in t
 parser.add_argument('--loss_style', default='mean', help='Loss for the network (MSE, vs. summing).')
 parser.add_argument('--init', default='normal', help='weigths initialization', type=str)
 parser.add_argument('--weight_decay', default=0, type=float)
+parser.add_argument('--batch_size', default=256, type=int)
 
-parser.add_argument('--visualize', default=False, help='Visualize the solution.')
+parser.add_argument('--visualize', default=True, help='Visualize the solution.')
 parser.add_argument('--save_model', default=True, help='Save the model for analysis later.')
 
 args = parser.parse_args()
@@ -137,7 +138,8 @@ set_seed(args.seed) # for weight initialization
 model = PhysicsInformedNN_pbc(args.system, X_u_train, u_train, X_f_train, bc_lb, bc_ub, layers, G, nu, beta, rho,
                             args.optimizer_name, args.lr, args.net, args, args.L, args.activation, args.loss_style, args.init,
                             args.weight_decay)
-model.train(3000)
+train_loss = model.train(2000, args.batch_size)
+pickle.dump(train_loss, open(f"../history/train_loss_{args.system}_beta-{beta}_layers-{args.layers}_L-{args.L}_WD-{args.weight_decay}_init-{args.init}_batch_size{args.batch_size}.pkl", "wb"))
 print(model.iter, "Iteration number ")
 u_pred = model.predict(X_star)
 
@@ -150,7 +152,7 @@ print('Error u abs: %e' % (error_u_abs))
 print('Error u linf: %e' % (error_u_linf))
 
 if args.visualize:
-    path = f"heatmap_results/{args.system}"
+    path = f"heatmap_results/{args.system}/beta_{args.beta}/L_{args.L}/wd_{args.weight_decay}/init_{args.init}/batch_{args.batch_size}/"
     if not os.path.exists(path):
         os.makedirs(path)
     u_pred = u_pred.reshape(len(t), len(x))
@@ -163,4 +165,4 @@ if args.save_model: # whether or not to save the model
     if not os.path.exists(path):
         os.makedirs(path)
     if 'pretrained' not in args.net: # only save new models
-        torch.save(model, f"saved_models/{args.system}_beta-{beta}_layers-{args.layers}_L-{args.L}_WD-{args.weight_decay}_init-{args.init}_seed{args.seed}.pt")
+        torch.save(model, f"saved_models/{args.system}_beta-{beta}_layers-{args.layers}_L-{args.L}_WD-{args.weight_decay}_init-{args.init}_batch_size{args.batch_size}.pt")
